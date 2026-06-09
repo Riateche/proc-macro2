@@ -1,5 +1,5 @@
 [package]
-name = "proc-macro2"
+name = "proc-macro2-send"
 version = "1.0.106"
 authors = ["David Tolnay <dtolnay@gmail.com>", "Alex Crichton <alex@alexcrichton.com>"]
 autobenches = false
@@ -64,4 +64,4 @@ members = ["benches/bench-libproc-macro", "tests/ui"]
 # carries the second-most-recent version number, pulling in quote which resolves
 # to a dependency on the just-published most recent version number. Thus the
 # patch will fail to apply because the version numbers are different.
-proc-macro2 = { path = "." }
+proc-macro2-send = { path = "." }

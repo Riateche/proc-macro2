@@ -118,14 +118,6 @@
 )]
 #![allow(unknown_lints, mismatched_lifetime_syntaxes)]
 
-#[cfg(all(procmacro2_semver_exempt, wrap_proc_macro, not(super_unstable)))]
-compile_error! {"\
-    Something is not right. If you've tried to turn on \
-    procmacro2_semver_exempt, you need to ensure that it \
-    is turned on for the compilation of the proc-macro2 \
-    build script as well.
-"}
-
 #[cfg(all(
     procmacro2_nightly_testing,
     feature = "proc-macro",
@@ -146,9 +138,6 @@ mod parse;
 mod probe;
 mod rcvec;
 
-#[cfg(wrap_proc_macro)]
-mod detection;
-
 // Public for proc_macro2::fallback::force() and unforce(), but those are quite
 // a niche use case so we omit it from rustdoc.
 #[doc(hidden)]
@@ -156,12 +145,7 @@ pub mod fallback;
 
 pub mod extra;
 
-#[cfg(not(wrap_proc_macro))]
 use crate::fallback as imp;
-#[path = "wrapper.rs"]
-#[cfg(wrap_proc_macro)]
-mod imp;
-
 #[cfg(span_locations)]
 mod location;
 
@@ -272,14 +256,6 @@ impl FromStr for TokenStream {
                 _marker: MARKER,
             }),
         }
-    }
-}
-
-#[cfg(feature = "proc-macro")]
-#[cfg_attr(docsrs, doc(cfg(feature = "proc-macro")))]
-impl From<proc_macro::TokenStream> for TokenStream {
-    fn from(inner: proc_macro::TokenStream) -> Self {
-        TokenStream::_new(imp::TokenStream::from(inner))
     }
 }
 
@@ -442,28 +418,6 @@ impl Span {
     /// with the line/column information of `other`.
     pub fn located_at(&self, other: Span) -> Span {
         Span::_new(self.inner.located_at(other.inner))
-    }
-
-    /// Convert `proc_macro2::Span` to `proc_macro::Span`.
-    ///
-    /// This method is available when building with a nightly compiler, or when
-    /// building with rustc 1.29+ *without* semver exempt features.
-    ///
-    /// # Panics
-    ///
-    /// Panics if called from outside of a procedural macro. Unlike
-    /// `proc_macro2::Span`, the `proc_macro::Span` type can only exist within
-    /// the context of a procedural macro invocation.
-    #[cfg(wrap_proc_macro)]
-    pub fn unwrap(self) -> proc_macro::Span {
-        self.inner.unwrap()
-    }
-
-    // Soft deprecated. Please use Span::unwrap.
-    #[cfg(wrap_proc_macro)]
-    #[doc(hidden)]
-    pub fn unstable(self) -> proc_macro::Span {
-        self.unwrap()
     }
 
     /// Returns the span's byte position range in the source file.
