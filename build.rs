@@ -30,7 +30,6 @@ fn main() {
         println!("cargo:rustc-check-cfg=cfg(randomize_layout)");
         println!("cargo:rustc-check-cfg=cfg(span_locations)");
         println!("cargo:rustc-check-cfg=cfg(super_unstable)");
-        println!("cargo:rustc-check-cfg=cfg(wrap_proc_macro)");
     }
 
     let semver_exempt = cfg!(procmacro2_semver_exempt);
@@ -104,16 +103,6 @@ fn main() {
         // the user turns on unstable features.
         proc_macro_span = false;
         consider_rustc_bootstrap = true;
-    }
-
-    if proc_macro_span || !semver_exempt {
-        // Wrap types from libproc_macro rather than polyfilling the whole API.
-        // Enabled as long as procmacro2_semver_exempt is not set, because we
-        // can't emulate the unstable API without emulating everything else.
-        // Also enabled unconditionally on nightly, in which case the
-        // procmacro2_semver_exempt surface area is implemented by using the
-        // nightly-only proc_macro API.
-        println!("cargo:rustc-cfg=wrap_proc_macro");
     }
 
     if proc_macro_span {

@@ -19,7 +19,6 @@ fn test_proc_macro_size() {
 
 #[cfg_attr(not(target_pointer_width = "64"), ignore = "only applicable to 64-bit")]
 #[cfg_attr(randomize_layout, ignore = "disabled due to randomized layout")]
-#[cfg_attr(wrap_proc_macro, ignore = "wrapper mode")]
 #[cfg_attr(span_locations, ignore = "span locations are on")]
 #[test]
 fn test_proc_macro2_fallback_size_without_locations() {
@@ -34,7 +33,6 @@ fn test_proc_macro2_fallback_size_without_locations() {
 
 #[cfg_attr(not(target_pointer_width = "64"), ignore = "only applicable to 64-bit")]
 #[cfg_attr(randomize_layout, ignore = "disabled due to randomized layout")]
-#[cfg_attr(wrap_proc_macro, ignore = "wrapper mode")]
 #[cfg_attr(not(span_locations), ignore = "span locations are off")]
 #[test]
 fn test_proc_macro2_fallback_size_with_locations() {
@@ -50,7 +48,7 @@ fn test_proc_macro2_fallback_size_with_locations() {
 #[rustversion::attr(before(1.71), ignore = "requires Rust 1.71+")]
 #[cfg_attr(not(target_pointer_width = "64"), ignore = "only applicable to 64-bit")]
 #[cfg_attr(randomize_layout, ignore = "disabled due to randomized layout")]
-#[cfg_attr(not(wrap_proc_macro), ignore = "fallback mode")]
+#[cfg(ignore = "fallback mode")]
 #[cfg_attr(span_locations, ignore = "span locations are on")]
 #[test]
 fn test_proc_macro2_wrapper_size_without_locations() {
@@ -65,7 +63,7 @@ fn test_proc_macro2_wrapper_size_without_locations() {
 
 #[cfg_attr(not(target_pointer_width = "64"), ignore = "only applicable to 64-bit")]
 #[cfg_attr(randomize_layout, ignore = "disabled due to randomized layout")]
-#[cfg_attr(not(wrap_proc_macro), ignore = "fallback mode")]
+#[cfg(ignore = "fallback mode")]
 #[cfg_attr(not(span_locations), ignore = "span locations are off")]
 #[test]
 fn test_proc_macro2_wrapper_size_with_locations() {

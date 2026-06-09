@@ -1,5 +1,3 @@
-#[cfg(wrap_proc_macro)]
-use crate::imp;
 #[cfg(span_locations)]
 use crate::location::LineColumn;
 use crate::parse::{self, Cursor};
@@ -30,8 +28,6 @@ use core::ptr;
 use core::str;
 #[cfg(feature = "proc-macro")]
 use core::str::FromStr;
-#[cfg(wrap_proc_macro)]
-use std::panic;
 #[cfg(span_locations)]
 use std::path::PathBuf;
 #[cfg(all(span_locations, not(fuzzing)))]
@@ -39,17 +35,11 @@ use std::thread_local;
 
 /// Force use of proc-macro2's fallback implementation of the API for now, even
 /// if the compiler's implementation is available.
-pub fn force() {
-    #[cfg(wrap_proc_macro)]
-    crate::detection::force_fallback();
-}
+pub fn force() {}
 
 /// Resume using the compiler's implementation of the proc macro API if it is
 /// available.
-pub fn unforce() {
-    #[cfg(wrap_proc_macro)]
-    crate::detection::unforce_fallback();
-}
+pub fn unforce() {}
 
 #[derive(Clone)]
 pub(crate) struct TokenStream {
@@ -111,13 +101,9 @@ impl TokenStream {
 fn push_token_from_proc_macro(mut vec: RcVecMut<TokenTree>, token: TokenTree) {
     // https://github.com/dtolnay/proc-macro2/issues/235
     match token {
-        TokenTree::Literal(crate::Literal {
-            #[cfg(wrap_proc_macro)]
-                inner: crate::imp::Literal::Fallback(literal),
-            #[cfg(not(wrap_proc_macro))]
-                inner: literal,
-            ..
-        }) if literal.repr.starts_with('-') => {
+        TokenTree::Literal(crate::Literal { inner: literal, .. })
+            if literal.repr.starts_with('-') =>
+        {
             push_negative_literal(vec, literal);
         }
         _ => vec.push(token),
@@ -146,11 +132,6 @@ impl Drop for TokenStream {
                 let group = match token {
                     TokenTree::Group(group) => group.inner,
                     _ => continue,
-                };
-                #[cfg(wrap_proc_macro)]
-                let group = match group {
-                    crate::imp::Group::Fallback(group) => group,
-                    crate::imp::Group::Compiler(_) => continue,
                 };
                 let mut group = group;
                 if let Some(inner) = group.stream.inner.get_mut() {
@@ -1237,43 +1218,13 @@ fn escape_utf8(string: &str, repr: &mut String) {
 
 #[cfg(feature = "proc-macro")]
 pub(crate) trait FromStr2: FromStr<Err = proc_macro::LexError> {
-    #[cfg(wrap_proc_macro)]
-    fn valid(src: &str) -> bool;
-
-    #[cfg(wrap_proc_macro)]
-    fn from_str_checked(src: &str) -> Result<Self, imp::LexError> {
-        // Validate using fallback parser, because rustc is incapable of
-        // returning a recoverable Err for certain invalid token streams, and
-        // will instead permanently poison the compilation.
-        if !Self::valid(src) {
-            return Err(imp::LexError::CompilerPanic);
-        }
-
-        // Catch panic to work around https://github.com/rust-lang/rust/issues/58736.
-        match panic::catch_unwind(|| Self::from_str(src)) {
-            Ok(Ok(ok)) => Ok(ok),
-            Ok(Err(lex)) => Err(imp::LexError::Compiler(lex)),
-            Err(_panic) => Err(imp::LexError::CompilerPanic),
-        }
-    }
-
     fn from_str_unchecked(src: &str) -> Self {
         Self::from_str(src).unwrap()
     }
 }
 
 #[cfg(feature = "proc-macro")]
-impl FromStr2 for proc_macro::TokenStream {
-    #[cfg(wrap_proc_macro)]
-    fn valid(src: &str) -> bool {
-        TokenStream::from_str_checked(src).is_ok()
-    }
-}
+impl FromStr2 for proc_macro::TokenStream {}
 
 #[cfg(feature = "proc-macro")]
-impl FromStr2 for proc_macro::Literal {
-    #[cfg(wrap_proc_macro)]
-    fn valid(src: &str) -> bool {
-        Literal::from_str_checked(src).is_ok()
-    }
-}
+impl FromStr2 for proc_macro::Literal {}

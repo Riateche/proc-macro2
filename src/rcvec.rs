@@ -1,11 +1,11 @@
-use alloc::rc::Rc;
 use alloc::vec::{self, Vec};
 use core::mem;
 use core::panic::RefUnwindSafe;
 use core::slice;
+use std::sync::Arc;
 
 pub(crate) struct RcVec<T> {
-    inner: Rc<Vec<T>>,
+    inner: Arc<Vec<T>>,
 }
 
 pub(crate) struct RcVecBuilder<T> {
@@ -39,12 +39,12 @@ impl<T> RcVec<T> {
         T: Clone,
     {
         RcVecMut {
-            inner: Rc::make_mut(&mut self.inner),
+            inner: Arc::make_mut(&mut self.inner),
         }
     }
 
     pub(crate) fn get_mut(&mut self) -> Option<RcVecMut<T>> {
-        let inner = Rc::get_mut(&mut self.inner)?;
+        let inner = Arc::get_mut(&mut self.inner)?;
         Some(RcVecMut { inner })
     }
 
@@ -52,7 +52,7 @@ impl<T> RcVec<T> {
     where
         T: Clone,
     {
-        let vec = if let Some(owned) = Rc::get_mut(&mut self.inner) {
+        let vec = if let Some(owned) = Arc::get_mut(&mut self.inner) {
             mem::take(owned)
         } else {
             Vec::clone(&self.inner)
@@ -88,7 +88,7 @@ impl<T> RcVecBuilder<T> {
 
     pub(crate) fn build(self) -> RcVec<T> {
         RcVec {
-            inner: Rc::new(self.inner),
+            inner: Arc::new(self.inner),
         }
     }
 }
@@ -115,7 +115,7 @@ impl<'a, T> RcVecMut<'a, T> {
 impl<T> Clone for RcVec<T> {
     fn clone(&self) -> Self {
         RcVec {
-            inner: Rc::clone(&self.inner),
+            inner: Arc::clone(&self.inner),
         }
     }
 }
