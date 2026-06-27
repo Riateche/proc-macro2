@@ -1,6 +1,6 @@
 #![allow(clippy::extra_unused_type_parameters)]
 
-use proc_macro2::{
+use proc_macro2_send::{
     Delimiter, Group, Ident, LexError, Literal, Punct, Spacing, Span, TokenStream, TokenTree,
 };
 
@@ -45,26 +45,26 @@ macro_rules! assert_impl {
 assert_impl!(Delimiter is Send and Sync);
 assert_impl!(Spacing is Send and Sync);
 
-assert_impl!(Group is not Send or Sync);
-assert_impl!(Ident is not Send or Sync);
-assert_impl!(LexError is not Send or Sync);
-assert_impl!(Literal is not Send or Sync);
-assert_impl!(Punct is not Send or Sync);
-assert_impl!(Span is not Send or Sync);
-assert_impl!(TokenStream is not Send or Sync);
-assert_impl!(TokenTree is not Send or Sync);
+assert_impl!(Group is Send and Sync);
+assert_impl!(Ident is Send and Sync);
+assert_impl!(LexError is Send and Sync);
+assert_impl!(Literal is Send and Sync);
+assert_impl!(Punct is Send and Sync);
+assert_impl!(Span is Send and Sync);
+assert_impl!(TokenStream is Send and Sync);
+assert_impl!(TokenTree is Send and Sync);
 
 #[cfg(procmacro2_semver_exempt)]
 mod semver_exempt {
-    use proc_macro2::LineColumn;
+    use proc_macro2_send::LineColumn;
 
     assert_impl!(LineColumn is Send and Sync);
 }
 
 mod unwind_safe {
     #[cfg(procmacro2_semver_exempt)]
-    use proc_macro2::LineColumn;
-    use proc_macro2::{
+    use proc_macro2_send::LineColumn;
+    use proc_macro2_send::{
         Delimiter, Group, Ident, LexError, Literal, Punct, Spacing, Span, TokenStream, TokenTree,
     };
     use std::panic::{RefUnwindSafe, UnwindSafe};

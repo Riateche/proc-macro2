@@ -7,7 +7,7 @@ use crate::marker::{ProcMacroAutoTraits, MARKER};
 use crate::Span;
 use core::fmt::{self, Debug};
 
-/// Invalidate any `proc_macro2::Span` that exist on the current thread.
+/// Invalidate any `proc_macro2_send::Span` that exist on the current thread.
 ///
 /// The implementation of `Span` uses thread-local data structures and this
 /// function clears them. Calling any method on a `Span` on the current thread
@@ -37,7 +37,7 @@ use core::fmt::{self, Debug};
 /// rayon::scope(|s| {
 ///     for krate in every_version_of_every_crate() {
 ///         s.spawn(move |_| {
-///             proc_macro2::extra::invalidate_current_thread_spans();
+///             proc_macro2_send::extra::invalidate_current_thread_spans();
 ///
 ///             let reader = BufReader::new(krate);
 ///             let tar = GzDecoder::new(reader);
@@ -50,7 +50,7 @@ use core::fmt::{self, Debug};
 ///                 }
 ///                 let mut content = String::new();
 ///                 entry.read_to_string(&mut content).unwrap();
-///                 match proc_macro2::TokenStream::from_str(&content) {
+///                 match proc_macro2_send::TokenStream::from_str(&content) {
 ///                     Ok(tokens) => {/* ... */},
 ///                     Err(_) => continue,
 ///                 }
@@ -80,7 +80,6 @@ pub fn invalidate_current_thread_spans() {
 /// [`Group`]: crate::Group
 #[derive(Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct DelimSpan {
     inner: DelimSpanEnum,
     _marker: ProcMacroAutoTraits,
@@ -88,7 +87,6 @@ pub struct DelimSpan {
 
 #[derive(Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 enum DelimSpanEnum {
     Fallback(fallback::Span),
 }

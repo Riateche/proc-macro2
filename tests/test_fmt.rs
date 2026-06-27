@@ -1,4 +1,4 @@
-use proc_macro2::{Delimiter, Group, Ident, Span, TokenStream, TokenTree};
+use proc_macro2_send::{Delimiter, Group, Ident, Span, TokenStream, TokenTree};
 use std::iter;
 
 #[test]

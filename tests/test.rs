@@ -8,7 +8,7 @@
     clippy::uninlined_format_args
 )]
 
-use proc_macro2::{Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
+use proc_macro2_send::{Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
 use std::ffi::CStr;
 use std::iter;
 use std::str::{self, FromStr};
@@ -537,7 +537,7 @@ fn literal_span() {
 fn source_text() {
     let input = "    𓀕 a z    ";
     let mut tokens = input
-        .parse::<proc_macro2::TokenStream>()
+        .parse::<proc_macro2_send::TokenStream>()
         .unwrap()
         .into_iter();
 
@@ -1057,7 +1057,7 @@ fn byte_order_mark() {
 }
 
 #[cfg(span_locations)]
-fn create_span() -> proc_macro2::Span {
+fn create_span() -> proc_macro2_send::Span {
     let tts: TokenStream = "1".parse().unwrap();
     match tts.into_iter().next().unwrap() {
         TokenTree::Literal(literal) => literal.span(),
@@ -1073,7 +1073,7 @@ fn test_invalidate_current_thread_spans() {
     let actual = format!("{:#?}", create_span());
     assert_eq!(actual, "bytes(3..4)");
 
-    proc_macro2::extra::invalidate_current_thread_spans();
+    proc_macro2_send::extra::invalidate_current_thread_spans();
 
     let actual = format!("{:#?}", create_span());
     // Test that span offsets have been reset after the call
@@ -1087,7 +1087,7 @@ fn test_invalidate_current_thread_spans() {
 fn test_use_span_after_invalidation() {
     let span = create_span();
 
-    proc_macro2::extra::invalidate_current_thread_spans();
+    proc_macro2_send::extra::invalidate_current_thread_spans();
 
     span.source_text();
 }
