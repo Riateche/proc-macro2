@@ -79,12 +79,16 @@ pub fn invalidate_current_thread_spans() {
 ///
 /// [`Group`]: crate::Group
 #[derive(Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct DelimSpan {
     inner: DelimSpanEnum,
     _marker: ProcMacroAutoTraits,
 }
 
 #[derive(Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 enum DelimSpanEnum {
     Fallback(fallback::Span),
 }

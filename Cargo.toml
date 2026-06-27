@@ -30,6 +30,7 @@ features = ["span-locations"]
 
 [dependencies]
 unicode-ident = "1.0"
+serde = { version = "1.0.228", features = ["derive", "rc"], optional = true }
 
 [dev-dependencies]
 flate2 = "1.0"
