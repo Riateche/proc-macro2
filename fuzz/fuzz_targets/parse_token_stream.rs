@@ -63,5 +63,5 @@ fn do_fuzz(bytes: &[u8]) {
     let Ok(string) = str::from_utf8(bytes) else {
         return;
     };
-    let _ = string.parse::<proc_macro2::TokenStream>();
+    let _ = string.parse::<proc_macro2_send::TokenStream>();
 }

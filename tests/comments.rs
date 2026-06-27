@@ -1,6 +1,6 @@
 #![allow(clippy::assertions_on_result_states, clippy::uninlined_format_args)]
 
-use proc_macro2::{Delimiter, Literal, Spacing, TokenStream, TokenTree};
+use proc_macro2_send::{Delimiter, Literal, Spacing, TokenStream, TokenTree};
 
 // #[doc = "..."] -> "..."
 fn lit_of_outer_doc_comment(tokens: &TokenStream) -> Literal {

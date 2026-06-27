@@ -39,9 +39,9 @@
 //! # };
 //! # #[cfg(wrap_proc_macro)]
 //! pub fn my_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-//!     let input = proc_macro2::TokenStream::from(input);
+//!     let input = proc_macro2_send::TokenStream::from(input);
 //!
-//!     let output: proc_macro2::TokenStream = {
+//!     let output: proc_macro2_send::TokenStream = {
 //!         /* transform input */
 //!         # input
 //!     };
@@ -138,7 +138,7 @@ mod parse;
 mod probe;
 mod rcvec;
 
-// Public for proc_macro2::fallback::force() and unforce(), but those are quite
+// Public for proc_macro2_send::fallback::force() and unforce(), but those are quite
 // a niche use case so we omit it from rustdoc.
 #[doc(hidden)]
 pub mod fallback;
@@ -214,7 +214,7 @@ impl TokenStream {
 
     fn _new_fallback(inner: fallback::TokenStream) -> Self {
         TokenStream {
-            inner: imp::TokenStream::from(inner),
+            inner,
             _marker: MARKER,
         }
     }
@@ -380,7 +380,7 @@ impl Span {
 
     fn _new_fallback(inner: fallback::Span) -> Self {
         Span {
-            inner: imp::Span::from(inner),
+            inner,
             _marker: MARKER,
         }
     }
@@ -676,9 +676,7 @@ impl Group {
     }
 
     fn _new_fallback(inner: fallback::Group) -> Self {
-        Group {
-            inner: imp::Group::from(inner),
-        }
+        Group { inner }
     }
 
     /// Creates a new `Group` with the given delimiter and token stream.
@@ -884,7 +882,7 @@ impl Debug for Punct {
 /// behavior of the resulting identifier.
 ///
 /// ```
-/// use proc_macro2::{Ident, Span};
+/// use proc_macro2_send::{Ident, Span};
 ///
 /// fn main() {
 ///     let call_ident = Ident::new("calligraphy", Span::call_site());
@@ -896,7 +894,7 @@ impl Debug for Punct {
 /// An ident can be interpolated into a token stream using the `quote!` macro.
 ///
 /// ```
-/// use proc_macro2::{Ident, Span};
+/// use proc_macro2_send::{Ident, Span};
 /// use quote::quote;
 ///
 /// fn main() {
@@ -915,7 +913,7 @@ impl Debug for Punct {
 /// method.
 ///
 /// ```
-/// # use proc_macro2::{Ident, Span};
+/// # use proc_macro2_send::{Ident, Span};
 /// #
 /// # let ident = Ident::new("another_identifier", Span::call_site());
 /// #
@@ -942,7 +940,7 @@ impl Ident {
 
     fn _new_fallback(inner: fallback::Ident) -> Self {
         Ident {
-            inner: imp::Ident::from(inner),
+            inner,
             _marker: MARKER,
         }
     }
@@ -1117,7 +1115,7 @@ impl Literal {
 
     fn _new_fallback(inner: fallback::Literal) -> Self {
         Literal {
-            inner: imp::Literal::from(inner),
+            inner,
             _marker: MARKER,
         }
     }
