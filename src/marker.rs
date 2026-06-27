@@ -8,6 +8,7 @@ use core::panic::{RefUnwindSafe, UnwindSafe};
     all(procmacro2_semver_exempt, any(super_unstable)),
     derive(PartialEq, Eq)
 )]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct ProcMacroAutoTraits(PhantomData<()>);
 
 pub(crate) const MARKER: ProcMacroAutoTraits = ProcMacroAutoTraits(PhantomData);

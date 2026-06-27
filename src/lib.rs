@@ -192,6 +192,7 @@ pub use crate::rustc_literal_escaper::EscapeError;
 /// Token stream is both the input and output of `#[proc_macro]`,
 /// `#[proc_macro_attribute]` and `#[proc_macro_derive]` definitions.
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TokenStream {
     inner: imp::TokenStream,
     _marker: ProcMacroAutoTraits,
@@ -363,6 +364,7 @@ impl Error for LexError {}
 
 /// A region of source code, along with macro expansion information.
 #[derive(Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Span {
     inner: imp::Span,
     _marker: ProcMacroAutoTraits,
@@ -529,6 +531,7 @@ impl Debug for Span {
 
 /// A single token or a delimited sequence of token trees (e.g. `[1, (), ..]`).
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TokenTree {
     /// A token stream surrounded by bracket delimiters.
     Group(Group),
@@ -630,12 +633,14 @@ impl Debug for TokenTree {
 /// A `Group` internally contains a `TokenStream` which is surrounded by
 /// `Delimiter`s.
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Group {
     inner: imp::Group,
 }
 
 /// Describes how a sequence of token trees is delimited.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Delimiter {
     /// `( ... )`
     Parenthesis,
@@ -770,6 +775,7 @@ impl Debug for Group {
 /// Multicharacter operators like `+=` are represented as two instances of
 /// `Punct` with different forms of `Spacing` returned.
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Punct {
     ch: char,
     spacing: Spacing,
@@ -779,6 +785,7 @@ pub struct Punct {
 /// Whether a `Punct` is followed immediately by another `Punct` or followed by
 /// another token or whitespace.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Spacing {
     /// E.g. `+` is `Alone` in `+ =`, `+ident` or `+()`.
     Alone,
@@ -919,6 +926,7 @@ impl Debug for Punct {
 /// }
 /// ```
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Ident {
     inner: imp::Ident,
     _marker: ProcMacroAutoTraits,
@@ -1022,7 +1030,7 @@ impl PartialOrd for Ident {
 
 impl Ord for Ident {
     fn cmp(&self, other: &Ident) -> Ordering {
-        self.to_string().cmp(&other.to_string())
+        self.inner.cmp(&other.inner)
     }
 }
 
@@ -1053,6 +1061,7 @@ impl Debug for Ident {
 /// Boolean literals like `true` and `false` do not belong here, they are
 /// `Ident`s.
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Literal {
     inner: imp::Literal,
     _marker: ProcMacroAutoTraits,

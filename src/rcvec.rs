@@ -4,6 +4,7 @@ use core::panic::RefUnwindSafe;
 use core::slice;
 use std::sync::Arc;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct RcVec<T> {
     inner: Arc<Vec<T>>,
 }

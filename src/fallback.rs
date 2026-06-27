@@ -16,7 +16,6 @@ use alloc::vec::Vec;
 use core::cell::RefCell;
 #[cfg(span_locations)]
 use core::cmp;
-#[cfg(all(span_locations, not(fuzzing)))]
 use core::cmp::Ordering;
 use core::ffi::CStr;
 use core::fmt::{self, Debug, Display, Write};
@@ -42,6 +41,7 @@ pub fn force() {}
 pub fn unforce() {}
 
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct TokenStream {
     inner: RcVec<TokenTree>,
 }
@@ -324,6 +324,8 @@ pub(crate) fn invalidate_current_thread_spans() {
 }
 
 #[cfg(all(span_locations, not(fuzzing)))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone)]
 struct FileInfo {
     source_text: String,
     span: Span,
@@ -428,12 +430,26 @@ fn lines_offsets(s: &str) -> (usize, Vec<usize>) {
 }
 
 #[cfg(all(span_locations, not(fuzzing)))]
-struct SourceMap {
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone)]
+pub struct SourceMap {
     files: Vec<FileInfo>,
 }
 
 #[cfg(all(span_locations, not(fuzzing)))]
 impl SourceMap {
+    pub fn get() -> Self {
+        SOURCE_MAP.with(|s| s.borrow().clone())
+    }
+
+    pub fn set(value: SourceMap) {
+        SOURCE_MAP.with(|s| *s.borrow_mut() = value)
+    }
+
+    pub fn swap(value: &mut SourceMap) {
+        SOURCE_MAP.with(|s| std::mem::swap(&mut *s.borrow_mut(), value))
+    }
+
     fn next_start_pos(&self) -> u32 {
         // Add 1 so there's always space between files.
         //
@@ -497,7 +513,9 @@ impl SourceMap {
     }
 }
 
+// TODO: smart serde impl
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct Span {
     #[cfg(span_locations)]
     pub(crate) lo: u32,
@@ -697,6 +715,7 @@ pub(crate) fn debug_span_field_if_nontrivial(debug: &mut fmt::DebugStruct, span:
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct Group {
     delimiter: Delimiter,
     stream: TokenStream,
@@ -774,7 +793,8 @@ impl Debug for Group {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct Ident {
     sym: Box<str>,
     span: Span,
@@ -816,6 +836,17 @@ impl Ident {
 
     pub(crate) fn set_span(&mut self, span: Span) {
         self.span = span;
+    }
+}
+
+impl PartialOrd for Ident {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for Ident {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (self.raw, &self.sym).cmp(&(other.raw, &other.sym))
     }
 }
 
@@ -921,6 +952,7 @@ impl Debug for Ident {
 }
 
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct Literal {
     pub(crate) repr: String,
     span: Span,
