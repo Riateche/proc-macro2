@@ -9,11 +9,16 @@ use alloc::vec::Vec;
 use core::char;
 use core::str::{Bytes, CharIndices, Chars};
 
+#[cfg(span_locations)]
+use crate::source::Source;
+
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub(crate) struct Cursor<'a> {
     pub(crate) rest: &'a str,
     #[cfg(span_locations)]
     pub(crate) off: u32,
+    #[cfg(span_locations)]
+    pub(crate) source: &'a Source,
 }
 
 impl<'a> Cursor<'a> {
@@ -23,6 +28,8 @@ impl<'a> Cursor<'a> {
             rest,
             #[cfg(span_locations)]
             off: self.off + _front.chars().count() as u32,
+            #[cfg(span_locations)]
+            source: self.source,
         }
     }
 
@@ -188,7 +195,12 @@ pub(crate) fn token_stream(mut input: Cursor) -> Result<TokenStream, LexError> {
                 None => Ok(tokens.build()),
                 #[cfg(span_locations)]
                 Some((lo, _frame)) => Err(LexError {
-                    span: Span { lo: *lo, hi: *lo },
+                    span: Span {
+                        lo: *lo,
+                        hi: *lo,
+                        #[cfg(span_locations)]
+                        source: input.source.clone(),
+                    },
                 }),
                 #[cfg(not(span_locations))]
                 Some(_frame) => Err(LexError { span: Span {} }),
@@ -229,6 +241,8 @@ pub(crate) fn token_stream(mut input: Cursor) -> Result<TokenStream, LexError> {
                 lo,
                 #[cfg(span_locations)]
                 hi: input.off,
+                #[cfg(span_locations)]
+                source: input.source.clone(),
             });
             tokens = outer;
             tokens.push_token_from_parser(TokenTree::Group(crate::Group::_new_fallback(g)));
@@ -242,6 +256,8 @@ pub(crate) fn token_stream(mut input: Cursor) -> Result<TokenStream, LexError> {
                 lo,
                 #[cfg(span_locations)]
                 hi: rest.off,
+                #[cfg(span_locations)]
+                source: input.source.clone(),
             }));
             tokens.push_token_from_parser(tt);
             input = rest;
@@ -258,6 +274,8 @@ fn lex_error(cursor: Cursor) -> LexError {
             lo: cursor.off,
             #[cfg(span_locations)]
             hi: cursor.off,
+            #[cfg(span_locations)]
+            source: cursor.source.clone(),
         },
     }
 }
@@ -914,8 +932,10 @@ fn doc_comment<'a>(input: Cursor<'a>, tokens: &mut TokenStreamBuilder) -> PResul
         lo,
         #[cfg(span_locations)]
         hi: rest.off,
+        #[cfg(span_locations)]
+        source: input.source.clone(),
     };
-    let span = crate::Span::_new_fallback(fallback_span);
+    let span = crate::Span::_new_fallback(fallback_span.clone());
 
     let mut scan_for_bare_cr = comment;
     while let Some(cr) = scan_for_bare_cr.find('\r') {
@@ -927,20 +947,20 @@ fn doc_comment<'a>(input: Cursor<'a>, tokens: &mut TokenStreamBuilder) -> PResul
     }
 
     let mut pound = Punct::new('#', Spacing::Alone);
-    pound.set_span(span);
+    pound.set_span(span.clone());
     tokens.push_token_from_parser(TokenTree::Punct(pound));
 
     if inner {
         let mut bang = Punct::new('!', Spacing::Alone);
-        bang.set_span(span);
+        bang.set_span(span.clone());
         tokens.push_token_from_parser(TokenTree::Punct(bang));
     }
 
     let doc_ident = crate::Ident::_new_fallback(Ident::new_unchecked("doc", fallback_span));
     let mut equal = Punct::new('=', Spacing::Alone);
-    equal.set_span(span);
+    equal.set_span(span.clone());
     let mut literal = crate::Literal::_new_fallback(Literal::string(comment));
-    literal.set_span(span);
+    literal.set_span(span.clone());
     let mut bracketed = TokenStreamBuilder::with_capacity(3);
     bracketed.push_token_from_parser(TokenTree::Ident(doc_ident));
     bracketed.push_token_from_parser(TokenTree::Punct(equal));
