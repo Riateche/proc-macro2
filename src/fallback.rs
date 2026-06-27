@@ -1,10 +1,11 @@
+#[cfg(span_locations)]
+use crate::location::LineColumn;
 use crate::parse::{self, Cursor};
 use crate::rcvec::{RcVec, RcVecBuilder, RcVecIntoIter, RcVecMut};
 #[cfg(span_locations)]
 use crate::source::Source;
 use crate::{Delimiter, Spacing, TokenTree};
 use alloc::borrow::ToOwned as _;
-use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::{String, ToString as _};
 use alloc::vec::Vec;
@@ -23,8 +24,7 @@ use core::str;
 use core::str::FromStr;
 #[cfg(span_locations)]
 use std::path::PathBuf;
-#[cfg(span_locations)]
-use {crate::location::LineColumn, std::sync::Arc};
+use std::sync::Arc;
 
 /// Force use of proc-macro2's fallback implementation of the API for now, even
 /// if the compiler's implementation is available.
@@ -42,17 +42,17 @@ pub(crate) struct TokenStream {
 
 #[derive(Debug)]
 pub(crate) struct LexError {
-    pub(crate) span: Span,
+    pub(crate) span: crate::Span,
 }
 
 impl LexError {
-    pub(crate) fn span(&self) -> &Span {
+    pub(crate) fn span(&self) -> &crate::Span {
         &self.span
     }
 
     pub(crate) fn call_site() -> Self {
         LexError {
-            span: Span::call_site(),
+            span: crate::Span::_new(Span::call_site()),
         }
     }
 }
@@ -113,7 +113,7 @@ fn push_token_from_proc_macro(mut vec: RcVecMut<TokenTree>, token: TokenTree) {
     fn push_negative_literal(mut vec: RcVecMut<TokenTree>, mut literal: Literal) {
         literal.repr.remove(0);
         let mut punct = crate::Punct::new('-', Spacing::Alone);
-        punct.set_span(crate::Span::_new_fallback(literal.span.clone()));
+        punct.set_span(literal.span.clone());
         vec.push(TokenTree::Punct(punct));
         vec.push(TokenTree::Literal(crate::Literal::_new_fallback(literal)));
     }
@@ -300,7 +300,6 @@ impl IntoIterator for TokenStream {
     }
 }
 
-// TODO: smart serde impl
 #[derive(Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct Span {
@@ -336,15 +335,15 @@ impl Span {
         Span::call_site()
     }
 
-    pub(crate) fn resolved_at(&self, _other: Span) -> Span {
+    pub(crate) fn resolved_at(&self, _other: &Span) -> Span {
         // Stable spans consist only of line/column information, so
         // `resolved_at` and `located_at` only select which span the
         // caller wants line/column information from.
         self.clone()
     }
 
-    pub(crate) fn located_at(&self, other: Span) -> Span {
-        other
+    pub(crate) fn located_at(&self, other: &Span) -> Span {
+        other.clone()
     }
 
     #[cfg(span_locations)]
@@ -389,12 +388,12 @@ impl Span {
     }
 
     #[cfg(not(span_locations))]
-    pub(crate) fn join(&self, _other: Span) -> Option<Span> {
+    pub(crate) fn join(&self, _other: &Span) -> Option<Span> {
         Some(Span {})
     }
 
     #[cfg(span_locations)]
-    pub(crate) fn join(&self, other: Span) -> Option<Span> {
+    pub(crate) fn join(&self, other: &Span) -> Option<Span> {
         #[cfg(fuzzing)]
         return {
             let _ = other;
@@ -414,21 +413,15 @@ impl Span {
         }
     }
 
-    #[cfg(not(span_locations))]
+    #[cfg(span_locations)]
     pub(crate) fn source_text(&self) -> &str {
-        ""
+        let byte_range = self.byte_range();
+        &self.source.source_text()[byte_range]
     }
 
     #[cfg(span_locations)]
-    pub(crate) fn source_text(&self) -> &str {
-        #[cfg(fuzzing)]
-        return None;
-
-        #[cfg(not(fuzzing))]
-        {
-            let byte_range = self.byte_range();
-            &self.source.source_text()[byte_range]
-        }
+    pub(crate) fn file_content(&self) -> &Arc<str> {
+        self.source.source_text()
     }
 
     #[cfg(not(span_locations))]
@@ -493,7 +486,7 @@ pub(crate) fn debug_span_field_if_nontrivial(debug: &mut fmt::DebugStruct, span:
 pub(crate) struct Group {
     delimiter: Delimiter,
     stream: TokenStream,
-    span: Span,
+    span: crate::Span,
 }
 
 impl Group {
@@ -501,7 +494,7 @@ impl Group {
         Group {
             delimiter,
             stream,
-            span: Span::call_site(),
+            span: crate::Span::_new(Span::call_site()),
         }
     }
 
@@ -513,20 +506,20 @@ impl Group {
         self.stream.clone()
     }
 
-    pub(crate) fn span(&self) -> &Span {
+    pub(crate) fn span(&self) -> &crate::Span {
         &self.span
     }
 
     pub(crate) fn span_open(&self) -> Span {
-        self.span.first_byte()
+        self.span.inner.first_byte()
     }
 
     pub(crate) fn span_close(&self) -> Span {
-        self.span.last_byte()
+        self.span.inner.last_byte()
     }
 
     pub(crate) fn set_span(&mut self, span: Span) {
-        self.span = span;
+        self.span = crate::Span::_new(span);
     }
 }
 
@@ -562,7 +555,7 @@ impl Debug for Group {
         let mut debug = fmt.debug_struct("Group");
         debug.field("delimiter", &self.delimiter);
         debug.field("stream", &self.stream);
-        debug_span_field_if_nontrivial(&mut debug, &self.span);
+        debug_span_field_if_nontrivial(&mut debug, &self.span.inner);
         debug.finish()
     }
 }
@@ -570,8 +563,9 @@ impl Debug for Group {
 #[derive(Clone, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct Ident {
-    sym: Box<str>,
-    span: Span,
+    #[cfg_attr(feature = "serde", serde(with = "serde_rc"))]
+    sym: Arc<str>,
+    span: crate::Span,
     raw: bool,
 }
 
@@ -584,8 +578,8 @@ impl Ident {
 
     pub(crate) fn new_unchecked(string: &str, span: Span) -> Self {
         Ident {
-            sym: Box::from(string),
-            span,
+            sym: string.into(),
+            span: crate::Span::_new(span),
             raw: false,
         }
     }
@@ -598,18 +592,18 @@ impl Ident {
 
     pub(crate) fn new_raw_unchecked(string: &str, span: Span) -> Self {
         Ident {
-            sym: Box::from(string),
-            span,
+            sym: string.into(),
+            span: crate::Span::_new(span),
             raw: true,
         }
     }
 
-    pub(crate) fn span(&self) -> &Span {
+    pub(crate) fn span(&self) -> &crate::Span {
         &self.span
     }
 
     pub(crate) fn set_span(&mut self, span: Span) {
-        self.span = span;
+        self.span = crate::Span::_new(span);
     }
 }
 
@@ -720,7 +714,7 @@ impl Debug for Ident {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut debug = f.debug_struct("Ident");
         debug.field("sym", &format_args!("{}", self));
-        debug_span_field_if_nontrivial(&mut debug, &self.span);
+        debug_span_field_if_nontrivial(&mut debug, &self.span.inner);
         debug.finish()
     }
 }
@@ -729,7 +723,7 @@ impl Debug for Ident {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct Literal {
     pub(crate) repr: String,
-    span: Span,
+    span: crate::Span,
 }
 
 macro_rules! suffixed_numbers {
@@ -752,7 +746,7 @@ impl Literal {
     pub(crate) fn _new(repr: String) -> Self {
         Literal {
             repr,
-            span: Span::call_site(),
+            span: crate::Span::_new(Span::call_site()),
         }
     }
 
@@ -780,14 +774,14 @@ impl Literal {
                 if negative {
                     literal.repr.insert(0, '-');
                 }
-                literal.span = Span {
+                literal.span = crate::Span::_new(Span {
                     #[cfg(span_locations)]
                     lo,
                     #[cfg(span_locations)]
                     hi: rest.off,
                     #[cfg(span_locations)]
                     source,
-                };
+                });
                 return Ok(literal);
             }
         }
@@ -941,12 +935,12 @@ impl Literal {
         Literal::_new(repr)
     }
 
-    pub(crate) fn span(&self) -> &Span {
+    pub(crate) fn span(&self) -> &crate::Span {
         &self.span
     }
 
     pub(crate) fn set_span(&mut self, span: Span) {
-        self.span = span;
+        self.span = crate::Span::_new(span);
     }
 
     pub(crate) fn subspan<R: RangeBounds<usize>>(&self, range: R) -> Option<Span> {
@@ -963,30 +957,30 @@ impl Literal {
             let lo = match range.start_bound() {
                 Bound::Included(start) => {
                     let start = u32::try_from(*start).ok()?;
-                    self.span.lo.checked_add(start)?
+                    self.span.inner.lo.checked_add(start)?
                 }
                 Bound::Excluded(start) => {
                     let start = u32::try_from(*start).ok()?;
-                    self.span.lo.checked_add(start)?.checked_add(1)?
+                    self.span.inner.lo.checked_add(start)?.checked_add(1)?
                 }
-                Bound::Unbounded => self.span.lo,
+                Bound::Unbounded => self.span.inner.lo,
             };
             let hi = match range.end_bound() {
                 Bound::Included(end) => {
                     let end = u32::try_from(*end).ok()?;
-                    self.span.lo.checked_add(end)?.checked_add(1)?
+                    self.span.inner.lo.checked_add(end)?.checked_add(1)?
                 }
                 Bound::Excluded(end) => {
                     let end = u32::try_from(*end).ok()?;
-                    self.span.lo.checked_add(end)?
+                    self.span.inner.lo.checked_add(end)?
                 }
-                Bound::Unbounded => self.span.hi,
+                Bound::Unbounded => self.span.inner.hi,
             };
-            if lo <= hi && hi <= self.span.hi {
+            if lo <= hi && hi <= self.span.inner.hi {
                 Some(Span {
                     lo,
                     hi,
-                    source: self.span.source.clone(),
+                    source: self.span.inner.source.clone(),
                 })
             } else {
                 None
@@ -1005,7 +999,7 @@ impl Debug for Literal {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         let mut debug = fmt.debug_struct("Literal");
         debug.field("lit", &format_args!("{}", self.repr));
-        debug_span_field_if_nontrivial(&mut debug, &self.span);
+        debug_span_field_if_nontrivial(&mut debug, &self.span.inner);
         debug.finish()
     }
 }

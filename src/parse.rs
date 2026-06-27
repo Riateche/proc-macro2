@@ -195,15 +195,17 @@ pub(crate) fn token_stream(mut input: Cursor) -> Result<TokenStream, LexError> {
                 None => Ok(tokens.build()),
                 #[cfg(span_locations)]
                 Some((lo, _frame)) => Err(LexError {
-                    span: Span {
+                    span: crate::Span::_new(Span {
                         lo: *lo,
                         hi: *lo,
                         #[cfg(span_locations)]
                         source: input.source.clone(),
-                    },
+                    }),
                 }),
                 #[cfg(not(span_locations))]
-                Some(_frame) => Err(LexError { span: Span {} }),
+                Some(_frame) => Err(LexError {
+                    span: crate::Span::_new(Span {}),
+                }),
             };
         };
 
@@ -269,14 +271,14 @@ fn lex_error(cursor: Cursor) -> LexError {
     #[cfg(not(span_locations))]
     let _ = cursor;
     LexError {
-        span: Span {
+        span: crate::Span::_new(Span {
             #[cfg(span_locations)]
             lo: cursor.off,
             #[cfg(span_locations)]
             hi: cursor.off,
             #[cfg(span_locations)]
             source: cursor.source.clone(),
-        },
+        }),
     }
 }
 

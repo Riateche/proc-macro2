@@ -6,6 +6,14 @@ use std::sync::Arc;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct RcVec<T> {
+    #[cfg_attr(
+        feature = "serde",
+        serde(bound(
+            deserialize = "T: serde::Deserialize<'de> + 'static",
+            serialize = "T: serde::Serialize + 'static"
+        ))
+    )]
+    #[cfg_attr(feature = "serde", serde(with = "serde_rc"))]
     inner: Arc<Vec<T>>,
 }
 

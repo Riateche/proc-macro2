@@ -721,20 +721,18 @@ fn default_span() {
     let end = Span::call_site().end();
     assert_eq!(end.line, 1);
     assert_eq!(end.column, 0);
-    assert_eq!(Span::call_site().file(), "<unspecified>");
+    assert_eq!(&**Span::call_site().file(), "");
     assert!(Span::call_site().local_file().is_none());
 }
 
 #[cfg(procmacro2_semver_exempt)]
 #[test]
 fn span_join() {
-    let source1 = "aaa\nbbb"
-        .parse::<TokenStream>()
+    let source1 = TokenStream::parse_with_name("a", "aaa\nbbb")
         .unwrap()
         .into_iter()
         .collect::<Vec<_>>();
-    let source2 = "ccc\nddd"
-        .parse::<TokenStream>()
+    let source2 = TokenStream::parse_with_name("c", "ccc\nddd")
         .unwrap()
         .into_iter()
         .collect::<Vec<_>>();
@@ -747,8 +745,8 @@ fn span_join() {
     assert!(joined1.is_some());
     assert!(joined2.is_none());
 
-    let start = joined1.unwrap().start();
-    let end = joined1.unwrap().end();
+    let start = joined1.clone().unwrap().start();
+    let end = joined1.clone().unwrap().end();
     assert_eq!(start.line, 1);
     assert_eq!(start.column, 0);
     assert_eq!(end.line, 2);
@@ -1054,4 +1052,45 @@ fn byte_order_mark() {
 
     let string = "foo\u{feff}";
     string.parse::<TokenStream>().unwrap_err();
+}
+
+#[test]
+#[allow(clippy::mutable_key_type)]
+#[cfg(feature = "serde")]
+fn postcard_ident() {
+    use std::collections::BTreeMap;
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+    pub struct Package {
+        extern_prelude: BTreeMap<Ident, PackageId>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+    pub struct PackageId {
+        id: String,
+        display: String,
+    }
+    let mut extern_prelude = BTreeMap::new();
+    extern_prelude.insert(
+        Ident::new("abc", Span::call_site()),
+        PackageId {
+            id: "a".into(),
+            display: "b".into(),
+        },
+    );
+    extern_prelude.insert(
+        Ident::new("def", Span::call_site()),
+        PackageId {
+            id: "c".into(),
+            display: "d".into(),
+        },
+    );
+    let data = Package { extern_prelude };
+
+    let dump = postcard::to_allocvec(&data).unwrap();
+    serde_rc::clear_storage();
+
+    let data2 = postcard::from_bytes::<Package>(&dump).unwrap();
+    serde_rc::clear_storage();
+    assert_eq!(data, data2);
 }
