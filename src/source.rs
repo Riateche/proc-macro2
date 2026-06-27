@@ -2,29 +2,32 @@ use {
     crate::{fallback::Span, LineColumn},
     alloc::vec,
     core::ops::Range,
-    serde::{Deserialize, Serialize},
     std::{
         collections::BTreeMap,
+        hash::Hash,
         sync::{Arc, LazyLock, Mutex},
         vec::Vec,
     },
 };
 
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct SourceInner {
+    #[cfg_attr(feature = "serde", serde(with = "serde_rc"))]
     name: Arc<str>,
+    #[cfg_attr(feature = "serde", serde(with = "serde_rc"))]
     source_text: Arc<str>,
     lines: Vec<usize>,
     chars: usize,
     char_index_to_byte_offset: Mutex<BTreeMap<usize, usize>>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Source(#[serde(with = "serde_rc")] Arc<SourceInner>);
+#[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Source(#[cfg_attr(feature = "serde", serde(with = "serde_rc"))] Arc<SourceInner>);
 
 pub(crate) static EMPTY_SOURCE: LazyLock<Source> = LazyLock::new(|| Source::new("", ""));
 
-impl std::hash::Hash for Source {
+impl Hash for Source {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         Arc::as_ptr(&self.0).hash(state);
     }

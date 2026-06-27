@@ -42,7 +42,7 @@ pub fn local_file(this: &Span) -> Option<PathBuf> {
     this.local_file()
 }
 
-pub fn join(this: &Span, other: Span) -> Option<Span> {
+pub fn join(this: &Span, other: &Span) -> Option<Span> {
     this.join(other)
 }
 

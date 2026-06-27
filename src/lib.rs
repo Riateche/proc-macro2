@@ -164,6 +164,8 @@ use crate::marker::{ProcMacroAutoTraits, MARKER};
 use crate::rustc_literal_escaper::MixedUnit;
 #[cfg(procmacro2_semver_exempt)]
 use alloc::borrow::ToOwned as _;
+#[cfg(procmacro2_semver_exempt)]
+use alloc::string::String;
 use alloc::string::ToString as _;
 #[cfg(procmacro2_semver_exempt)]
 use alloc::vec::Vec;
@@ -225,6 +227,21 @@ impl TokenStream {
     /// Returns an empty `TokenStream` containing no token trees.
     pub fn new() -> Self {
         TokenStream::_new(imp::TokenStream::new())
+    }
+
+    /// Parses `source_text` into a token stream, attaching `name` to file information
+    /// of the produced spans.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if parsing fails.
+    pub fn parse_with_name(name: &str, source_text: &str) -> Result<Self, LexError> {
+        imp::TokenStream::parse_with_name(name, source_text)
+            .map(TokenStream::_new)
+            .map_err(|err| LexError {
+                inner: err,
+                _marker: MARKER,
+            })
     }
 
     /// Checks if this `TokenStream` is empty.
@@ -346,8 +363,8 @@ impl Debug for TokenStream {
 }
 
 impl LexError {
-    pub fn span(&self) -> Span {
-        Span::_new(self.inner.span().clone())
+    pub fn span(&self) -> &Span {
+        self.inner.span()
     }
 }
 
@@ -366,7 +383,7 @@ impl Display for LexError {
 impl Error for LexError {}
 
 /// A region of source code, along with macro expansion information.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Span {
     inner: imp::Span,
@@ -415,14 +432,14 @@ impl Span {
 
     /// Creates a new span with the same line/column information as `self` but
     /// that resolves symbols as though it were at `other`.
-    pub fn resolved_at(&self, other: Span) -> Span {
-        Span::_new(self.inner.resolved_at(other.inner))
+    pub fn resolved_at(&self, other: &Span) -> Span {
+        Span::_new(self.inner.resolved_at(&other.inner))
     }
 
     /// Creates a new span with the same name resolution behavior as `self` but
     /// with the line/column information of `other`.
-    pub fn located_at(&self, other: Span) -> Span {
-        Span::_new(self.inner.located_at(other.inner))
+    pub fn located_at(&self, other: &Span) -> Span {
+        Span::_new(self.inner.located_at(&other.inner))
     }
 
     /// Returns the span's byte position range in the source file.
@@ -500,8 +517,8 @@ impl Span {
     /// Warning: the underlying [`proc_macro::Span::join`] method is
     /// nightly-only. When called from within a procedural macro not using a
     /// nightly compiler, this method will always return `None`.
-    pub fn join(&self, other: Span) -> Option<Span> {
-        self.inner.join(other.inner).map(Span::_new)
+    pub fn join(&self, other: &Span) -> Option<Span> {
+        self.inner.join(&other.inner).map(Span::_new)
     }
 
     /// Compares two spans to see if they're equal.
@@ -520,8 +537,15 @@ impl Span {
     /// Note: The observable result of a macro should only rely on the tokens
     /// and not on this source text. The result of this function is a best
     /// effort to be used for diagnostics only.
+    #[cfg(span_locations)]
     pub fn source_text(&self) -> &str {
         self.inner.source_text()
+    }
+
+    /// Returns **full** content of the original source code.
+    #[cfg(span_locations)]
+    pub fn file_content(&self) -> &Arc<str> {
+        self.inner.file_content()
     }
 }
 
@@ -549,11 +573,11 @@ pub enum TokenTree {
 impl TokenTree {
     /// Returns the span of this tree, delegating to the `span` method of
     /// the contained token or a delimited stream.
-    pub fn span(&self) -> Span {
+    pub fn span(&self) -> &Span {
         match self {
             TokenTree::Group(t) => t.span(),
             TokenTree::Ident(t) => t.span(),
-            TokenTree::Punct(t) => t.span().clone(),
+            TokenTree::Punct(t) => t.span(),
             TokenTree::Literal(t) => t.span(),
         }
     }
@@ -711,11 +735,11 @@ impl Group {
     /// entire `Group`.
     ///
     /// ```text
-    /// pub fn span(&self) -> Span {
+    /// pub fn span(&self) -> &Span {
     ///            ^^^^^^^
     /// ```
-    pub fn span(&self) -> Span {
-        Span::_new(self.inner.span().clone())
+    pub fn span(&self) -> &Span {
+        self.inner.span()
     }
 
     /// Returns the span pointing to the opening delimiter of this group.
@@ -869,7 +893,7 @@ impl Debug for Punct {
 /// property.
 ///
 /// - The empty string is not an identifier. Use `Option<Ident>`.
-/// - A lifetime is not an identifier. Use `syn::Lifetime` instead.
+/// - A lifetime is not an identifier. Use `syn_send::Lifetime` instead.
 ///
 /// An identifier constructed with `Ident::new` is permitted to be a Rust
 /// keyword, though parsing one through its [`Parse`] implementation rejects
@@ -976,7 +1000,7 @@ impl Ident {
     /// name. If you are not sure whether the string contains an identifier and
     /// need to handle an error case, use
     /// <a href="https://docs.rs/syn/3/syn/fn.parse_str.html"><code
-    ///   style="padding-right:0;">syn::parse_str</code></a><code
+    ///   style="padding-right:0;">syn_send::parse_str</code></a><code
     ///   style="padding-left:0;">::&lt;Ident&gt;</code>
     /// rather than `Ident::new`.
     #[track_caller]
@@ -995,8 +1019,8 @@ impl Ident {
     }
 
     /// Returns the span of this `Ident`.
-    pub fn span(&self) -> Span {
-        Span::_new(self.inner.span().clone())
+    pub fn span(&self) -> &Span {
+        self.inner.span()
     }
 
     /// Configures the span of this `Ident`, possibly changing its hygiene
@@ -1251,8 +1275,8 @@ impl Literal {
     }
 
     /// Returns the span encompassing this literal.
-    pub fn span(&self) -> Span {
-        Span::_new(self.inner.span().clone())
+    pub fn span(&self) -> &Span {
+        self.inner.span()
     }
 
     /// Configures the span associated for this literal.

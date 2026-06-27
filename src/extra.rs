@@ -1,7 +1,6 @@
 //! Items which do not have a correspondence to any API in the proc_macro crate,
 //! but are necessary to include in proc-macro2.
 
-use crate::fallback;
 use crate::imp;
 use crate::marker::{ProcMacroAutoTraits, MARKER};
 use crate::Span;
@@ -21,7 +20,7 @@ pub struct DelimSpan {
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 enum DelimSpanEnum {
-    Fallback(fallback::Span),
+    Fallback(Span),
 }
 
 impl DelimSpan {
@@ -35,23 +34,23 @@ impl DelimSpan {
     }
 
     /// Returns a span covering the entire delimited group.
-    pub fn join(&self) -> Span {
+    pub fn join(&self) -> &Span {
         match &self.inner {
-            DelimSpanEnum::Fallback(span) => Span::_new_fallback(span.clone()),
+            DelimSpanEnum::Fallback(span) => span,
         }
     }
 
     /// Returns a span for the opening punctuation of the group only.
     pub fn open(&self) -> Span {
         match &self.inner {
-            DelimSpanEnum::Fallback(span) => Span::_new_fallback(span.first_byte()),
+            DelimSpanEnum::Fallback(span) => Span::_new_fallback(span.inner.first_byte()),
         }
     }
 
     /// Returns a span for the closing punctuation of the group only.
     pub fn close(&self) -> Span {
         match &self.inner {
-            DelimSpanEnum::Fallback(span) => Span::_new_fallback(span.last_byte()),
+            DelimSpanEnum::Fallback(span) => Span::_new_fallback(span.inner.last_byte()),
         }
     }
 }

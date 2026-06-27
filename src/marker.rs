@@ -9,6 +9,7 @@ use core::panic::{RefUnwindSafe, UnwindSafe};
     derive(PartialEq, Eq)
 )]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(PartialEq, Eq)]
 pub(crate) struct ProcMacroAutoTraits(PhantomData<()>);
 
 pub(crate) const MARKER: ProcMacroAutoTraits = ProcMacroAutoTraits(PhantomData);
