@@ -138,6 +138,8 @@ mod marker;
 mod parse;
 mod probe;
 mod rcvec;
+#[cfg(span_locations)]
+mod source;
 
 // Public for proc_macro2_send::fallback::force() and unforce(), but those are quite
 // a niche use case so we omit it from rustdoc.
@@ -162,20 +164,20 @@ use crate::marker::{ProcMacroAutoTraits, MARKER};
 use crate::rustc_literal_escaper::MixedUnit;
 #[cfg(procmacro2_semver_exempt)]
 use alloc::borrow::ToOwned as _;
-use alloc::string::{String, ToString as _};
+use alloc::string::ToString as _;
 #[cfg(procmacro2_semver_exempt)]
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 use core::ffi::CStr;
 use core::fmt::{self, Debug, Display};
 use core::hash::{Hash, Hasher};
-#[cfg(span_locations)]
-use core::ops::Range;
 use core::ops::RangeBounds;
 use core::str::FromStr;
 use std::error::Error;
 #[cfg(span_locations)]
 use std::path::PathBuf;
+#[cfg(span_locations)]
+use {core::ops::Range, std::sync::Arc};
 
 #[cfg(span_locations)]
 #[cfg_attr(docsrs, doc(cfg(feature = "span-locations")))]
@@ -251,7 +253,7 @@ impl FromStr for TokenStream {
     type Err = LexError;
 
     fn from_str(src: &str) -> Result<TokenStream, LexError> {
-        match imp::TokenStream::from_str_checked(src) {
+        match imp::TokenStream::parse_with_name("", src) {
             Ok(tokens) => Ok(TokenStream::_new(tokens)),
             Err(lex) => Err(LexError {
                 inner: lex,
@@ -345,7 +347,7 @@ impl Debug for TokenStream {
 
 impl LexError {
     pub fn span(&self) -> Span {
-        Span::_new(self.inner.span())
+        Span::_new(self.inner.span().clone())
     }
 }
 
@@ -364,7 +366,7 @@ impl Display for LexError {
 impl Error for LexError {}
 
 /// A region of source code, along with macro expansion information.
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Span {
     inner: imp::Span,
@@ -475,7 +477,7 @@ impl Span {
     /// remapped, or might be an artificial path such as `"<macro expansion>"`.
     #[cfg(span_locations)]
     #[cfg_attr(docsrs, doc(cfg(feature = "span-locations")))]
-    pub fn file(&self) -> String {
+    pub fn file(&self) -> &Arc<str> {
         self.inner.file()
     }
 
@@ -518,7 +520,7 @@ impl Span {
     /// Note: The observable result of a macro should only rely on the tokens
     /// and not on this source text. The result of this function is a best
     /// effort to be used for diagnostics only.
-    pub fn source_text(&self) -> Option<String> {
+    pub fn source_text(&self) -> &str {
         self.inner.source_text()
     }
 }
@@ -551,7 +553,7 @@ impl TokenTree {
         match self {
             TokenTree::Group(t) => t.span(),
             TokenTree::Ident(t) => t.span(),
-            TokenTree::Punct(t) => t.span(),
+            TokenTree::Punct(t) => t.span().clone(),
             TokenTree::Literal(t) => t.span(),
         }
     }
@@ -620,7 +622,7 @@ impl Debug for TokenTree {
             TokenTree::Ident(t) => {
                 let mut debug = f.debug_struct("Ident");
                 debug.field("sym", &format_args!("{}", t));
-                imp::debug_span_field_if_nontrivial(&mut debug, t.span().inner);
+                imp::debug_span_field_if_nontrivial(&mut debug, &t.span().inner);
                 debug.finish()
             }
             TokenTree::Punct(t) => Debug::fmt(t, f),
@@ -713,7 +715,7 @@ impl Group {
     ///            ^^^^^^^
     /// ```
     pub fn span(&self) -> Span {
-        Span::_new(self.inner.span())
+        Span::_new(self.inner.span().clone())
     }
 
     /// Returns the span pointing to the opening delimiter of this group.
@@ -832,8 +834,8 @@ impl Punct {
     }
 
     /// Returns the span for this punctuation character.
-    pub fn span(&self) -> Span {
-        self.span
+    pub fn span(&self) -> &Span {
+        &self.span
     }
 
     /// Configure the span for this punctuation character.
@@ -855,7 +857,7 @@ impl Debug for Punct {
         let mut debug = fmt.debug_struct("Punct");
         debug.field("char", &self.ch);
         debug.field("spacing", &self.spacing);
-        imp::debug_span_field_if_nontrivial(&mut debug, self.span.inner);
+        imp::debug_span_field_if_nontrivial(&mut debug, &self.span.inner);
         debug.finish()
     }
 }
@@ -994,7 +996,7 @@ impl Ident {
 
     /// Returns the span of this `Ident`.
     pub fn span(&self) -> Span {
-        Span::_new(self.inner.span())
+        Span::_new(self.inner.span().clone())
     }
 
     /// Configures the span of this `Ident`, possibly changing its hygiene
@@ -1250,7 +1252,7 @@ impl Literal {
 
     /// Returns the span encompassing this literal.
     pub fn span(&self) -> Span {
-        Span::_new(self.inner.span())
+        Span::_new(self.inner.span().clone())
     }
 
     /// Configures the span associated for this literal.

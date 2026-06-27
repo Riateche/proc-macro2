@@ -31,10 +31,11 @@ features = ["span-locations"]
 [dependencies]
 unicode-ident = "1.0"
 serde = { version = "1.0.228", features = ["derive", "rc"], optional = true }
+serde_rc = { path = "../serde_rc", optional = true }
 
 [dev-dependencies]
 flate2 = "1.0"
-quote = { version = "1.0", default-features = false }
+quote = { package = "quote-send", git = "https://github.com/Riateche/quote.git", branch = "send", default-features = false }
 rayon = "1.0"
 rustversion = "1"
 tar = "0.4"
@@ -49,6 +50,7 @@ span-locations = []
 
 # This feature no longer means anything.
 nightly = []
+serde = ["dep:serde", "dep:serde_rc"]
 
 [workspace]
 members = ["benches/bench-libproc-macro", "tests/ui"]
@@ -65,4 +67,7 @@ members = ["benches/bench-libproc-macro", "tests/ui"]
 # carries the second-most-recent version number, pulling in quote which resolves
 # to a dependency on the just-published most recent version number. Thus the
 # patch will fail to apply because the version numbers are different.
+proc-macro2-send = { path = "." }
+
+[patch."https://github.com/Riateche/proc-macro2.git"]
 proc-macro2-send = { path = "." }

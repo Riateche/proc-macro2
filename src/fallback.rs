@@ -1,19 +1,13 @@
-#[cfg(span_locations)]
-use crate::location::LineColumn;
 use crate::parse::{self, Cursor};
 use crate::rcvec::{RcVec, RcVecBuilder, RcVecIntoIter, RcVecMut};
+#[cfg(span_locations)]
+use crate::source::Source;
 use crate::{Delimiter, Spacing, TokenTree};
 use alloc::borrow::ToOwned as _;
 use alloc::boxed::Box;
-#[cfg(all(span_locations, not(fuzzing)))]
-use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString as _};
-#[cfg(all(span_locations, not(fuzzing)))]
-use alloc::vec;
 use alloc::vec::Vec;
-#[cfg(all(span_locations, not(fuzzing)))]
-use core::cell::RefCell;
 #[cfg(span_locations)]
 use core::cmp;
 use core::cmp::Ordering;
@@ -29,8 +23,8 @@ use core::str;
 use core::str::FromStr;
 #[cfg(span_locations)]
 use std::path::PathBuf;
-#[cfg(all(span_locations, not(fuzzing)))]
-use std::thread_local;
+#[cfg(span_locations)]
+use {crate::location::LineColumn, std::sync::Arc};
 
 /// Force use of proc-macro2's fallback implementation of the API for now, even
 /// if the compiler's implementation is available.
@@ -52,8 +46,8 @@ pub(crate) struct LexError {
 }
 
 impl LexError {
-    pub(crate) fn span(&self) -> Span {
-        self.span
+    pub(crate) fn span(&self) -> &Span {
+        &self.span
     }
 
     pub(crate) fn call_site() -> Self {
@@ -70,9 +64,15 @@ impl TokenStream {
         }
     }
 
-    pub(crate) fn from_str_checked(src: &str) -> Result<Self, LexError> {
-        // Create a dummy file & add it to the source map
-        let mut cursor = get_cursor(src);
+    pub fn parse_with_name(name: &str, source_text: &str) -> Result<Self, LexError> {
+        #[cfg(span_locations)]
+        let source = Source::new(name, source_text);
+        #[cfg(span_locations)]
+        let mut cursor = get_cursor(&source);
+        #[cfg(not(span_locations))]
+        let _ = name;
+        #[cfg(not(span_locations))]
+        let mut cursor = get_cursor(source_text);
 
         // Strip a byte order mark if present
         const BYTE_ORDER_MARK: &str = "\u{feff}";
@@ -85,7 +85,7 @@ impl TokenStream {
 
     #[cfg(feature = "proc-macro")]
     pub(crate) fn from_str_unchecked(src: &str) -> Self {
-        Self::from_str_checked(src).unwrap()
+        Self::parse_with_name("", src).unwrap()
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -113,7 +113,7 @@ fn push_token_from_proc_macro(mut vec: RcVecMut<TokenTree>, token: TokenTree) {
     fn push_negative_literal(mut vec: RcVecMut<TokenTree>, mut literal: Literal) {
         literal.repr.remove(0);
         let mut punct = crate::Punct::new('-', Spacing::Alone);
-        punct.set_span(crate::Span::_new_fallback(literal.span));
+        punct.set_span(crate::Span::_new_fallback(literal.span.clone()));
         vec.push(TokenTree::Punct(punct));
         vec.push(TokenTree::Literal(crate::Literal::_new_fallback(literal)));
     }
@@ -176,20 +176,17 @@ impl TokenStreamBuilder {
 }
 
 #[cfg(span_locations)]
-fn get_cursor(src: &str) -> Cursor {
+fn get_cursor(source: &Source) -> Cursor {
     #[cfg(fuzzing)]
     return Cursor { rest: src, off: 1 };
 
     // Create a dummy file & add it to the source map
     #[cfg(not(fuzzing))]
-    SOURCE_MAP.with(|sm| {
-        let mut sm = sm.borrow_mut();
-        let span = sm.add_file(src);
-        Cursor {
-            rest: src,
-            off: span.lo,
-        }
-    })
+    Cursor {
+        rest: source.source_text(),
+        off: 0,
+        source,
+    }
 }
 
 #[cfg(not(span_locations))]
@@ -303,224 +300,16 @@ impl IntoIterator for TokenStream {
     }
 }
 
-#[cfg(all(span_locations, not(fuzzing)))]
-thread_local! {
-    static SOURCE_MAP: RefCell<SourceMap> = RefCell::new(SourceMap {
-        // Start with a single dummy file which all call_site() and def_site()
-        // spans reference.
-        files: vec![FileInfo {
-            source_text: String::new(),
-            span: Span { lo: 0, hi: 0 },
-            lines: vec![0],
-            char_index_to_byte_offset: BTreeMap::new(),
-        }],
-    });
-}
-
-#[cfg(span_locations)]
-pub(crate) fn invalidate_current_thread_spans() {
-    #[cfg(not(fuzzing))]
-    SOURCE_MAP.with(|sm| sm.borrow_mut().files.truncate(1));
-}
-
-#[cfg(all(span_locations, not(fuzzing)))]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone)]
-struct FileInfo {
-    source_text: String,
-    span: Span,
-    lines: Vec<usize>,
-    char_index_to_byte_offset: BTreeMap<usize, usize>,
-}
-
-#[cfg(all(span_locations, not(fuzzing)))]
-impl FileInfo {
-    fn offset_line_column(&self, offset: usize) -> LineColumn {
-        assert!(self.span_within(Span {
-            lo: offset as u32,
-            hi: offset as u32,
-        }));
-        let offset = offset - self.span.lo as usize;
-        match self.lines.binary_search(&offset) {
-            Ok(found) => LineColumn {
-                line: found + 1,
-                column: 0,
-            },
-            Err(idx) => LineColumn {
-                line: idx,
-                column: offset - self.lines[idx - 1],
-            },
-        }
-    }
-
-    fn span_within(&self, span: Span) -> bool {
-        span.lo >= self.span.lo && span.hi <= self.span.hi
-    }
-
-    fn byte_range(&mut self, span: Span) -> Range<usize> {
-        self.byte(span.lo)..self.byte(span.hi)
-    }
-
-    fn byte(&mut self, ch: u32) -> usize {
-        let char_index = (ch - self.span.lo) as usize;
-
-        // Look up offset of the largest already-computed char index that is
-        // less than or equal to the current requested one.
-        let (&previous_char_index, &previous_byte_offset) = self
-            .char_index_to_byte_offset
-            .range(..=char_index)
-            .next_back()
-            .unwrap_or((&0, &0));
-
-        if previous_char_index == char_index {
-            return previous_byte_offset;
-        }
-
-        // Look up next char index that is greater than the requested one. We
-        // resume counting chars from whichever point is closer.
-        let byte_offset = match self.char_index_to_byte_offset.range(char_index..).next() {
-            Some((&next_char_index, &next_byte_offset))
-                if next_char_index - char_index < char_index - previous_char_index =>
-            {
-                self.source_text[..next_byte_offset]
-                    .char_indices()
-                    .nth_back(next_char_index - char_index - 1)
-                    .unwrap()
-                    .0
-            }
-            _ => {
-                match self.source_text[previous_byte_offset..]
-                    .char_indices()
-                    .nth(char_index - previous_char_index)
-                {
-                    Some((byte_offset_from_previous, _ch)) => {
-                        previous_byte_offset + byte_offset_from_previous
-                    }
-                    None => self.source_text.len(),
-                }
-            }
-        };
-
-        self.char_index_to_byte_offset
-            .insert(char_index, byte_offset);
-        byte_offset
-    }
-
-    fn source_text(&mut self, span: Span) -> String {
-        let byte_range = self.byte_range(span);
-        self.source_text[byte_range].to_owned()
-    }
-}
-
-/// Computes the offsets of each line in the given source string
-/// and the total number of characters
-#[cfg(all(span_locations, not(fuzzing)))]
-fn lines_offsets(s: &str) -> (usize, Vec<usize>) {
-    let mut lines = vec![0];
-    let mut total = 0;
-
-    for ch in s.chars() {
-        total += 1;
-        if ch == '\n' {
-            lines.push(total);
-        }
-    }
-
-    (total, lines)
-}
-
-#[cfg(all(span_locations, not(fuzzing)))]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone)]
-pub struct SourceMap {
-    files: Vec<FileInfo>,
-}
-
-#[cfg(all(span_locations, not(fuzzing)))]
-impl SourceMap {
-    pub fn get() -> Self {
-        SOURCE_MAP.with(|s| s.borrow().clone())
-    }
-
-    pub fn set(value: SourceMap) {
-        SOURCE_MAP.with(|s| *s.borrow_mut() = value)
-    }
-
-    pub fn swap(value: &mut SourceMap) {
-        SOURCE_MAP.with(|s| std::mem::swap(&mut *s.borrow_mut(), value))
-    }
-
-    fn next_start_pos(&self) -> u32 {
-        // Add 1 so there's always space between files.
-        //
-        // We'll always have at least 1 file, as we initialize our files list
-        // with a dummy file.
-        self.files.last().unwrap().span.hi + 1
-    }
-
-    fn add_file(&mut self, src: &str) -> Span {
-        let (len, lines) = lines_offsets(src);
-        let lo = self.next_start_pos();
-        let span = Span {
-            lo,
-            hi: lo + (len as u32),
-        };
-
-        self.files.push(FileInfo {
-            source_text: src.to_owned(),
-            span,
-            lines,
-            // Populated lazily by source_text().
-            char_index_to_byte_offset: BTreeMap::new(),
-        });
-
-        span
-    }
-
-    fn find(&self, span: Span) -> usize {
-        match self.files.binary_search_by(|file| {
-            if file.span.hi < span.lo {
-                Ordering::Less
-            } else if file.span.lo > span.hi {
-                Ordering::Greater
-            } else {
-                assert!(file.span_within(span));
-                Ordering::Equal
-            }
-        }) {
-            Ok(i) => i,
-            Err(_) => unreachable!("Invalid span with no related FileInfo!"),
-        }
-    }
-
-    fn filepath(&self, span: Span) -> String {
-        let i = self.find(span);
-        if i == 0 {
-            "<unspecified>".to_owned()
-        } else {
-            format!("<parsed string {}>", i)
-        }
-    }
-
-    fn fileinfo(&self, span: Span) -> &FileInfo {
-        let i = self.find(span);
-        &self.files[i]
-    }
-
-    fn fileinfo_mut(&mut self, span: Span) -> &mut FileInfo {
-        let i = self.find(span);
-        &mut self.files[i]
-    }
-}
-
 // TODO: smart serde impl
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct Span {
     #[cfg(span_locations)]
     pub(crate) lo: u32,
     #[cfg(span_locations)]
     pub(crate) hi: u32,
+    #[cfg(span_locations)]
+    pub(crate) source: Source,
 }
 
 impl Span {
@@ -531,7 +320,11 @@ impl Span {
 
     #[cfg(span_locations)]
     pub(crate) fn call_site() -> Self {
-        Span { lo: 0, hi: 0 }
+        Span {
+            lo: 0,
+            hi: 0,
+            source: crate::source::EMPTY_SOURCE.clone(),
+        }
     }
 
     pub(crate) fn mixed_site() -> Self {
@@ -547,7 +340,7 @@ impl Span {
         // Stable spans consist only of line/column information, so
         // `resolved_at` and `located_at` only select which span the
         // caller wants line/column information from.
-        *self
+        self.clone()
     }
 
     pub(crate) fn located_at(&self, other: Span) -> Span {
@@ -560,13 +353,7 @@ impl Span {
         return 0..0;
 
         #[cfg(not(fuzzing))]
-        {
-            if self.is_call_site() {
-                0..0
-            } else {
-                SOURCE_MAP.with(|sm| sm.borrow_mut().fileinfo_mut(*self).byte_range(*self))
-            }
-        }
+        self.source.byte_range(self)
     }
 
     #[cfg(span_locations)]
@@ -575,11 +362,7 @@ impl Span {
         return LineColumn { line: 0, column: 0 };
 
         #[cfg(not(fuzzing))]
-        SOURCE_MAP.with(|sm| {
-            let sm = sm.borrow();
-            let fi = sm.fileinfo(*self);
-            fi.offset_line_column(self.lo as usize)
-        })
+        self.source.offset_line_column(self.lo as usize)
     }
 
     #[cfg(span_locations)]
@@ -588,23 +371,16 @@ impl Span {
         return LineColumn { line: 0, column: 0 };
 
         #[cfg(not(fuzzing))]
-        SOURCE_MAP.with(|sm| {
-            let sm = sm.borrow();
-            let fi = sm.fileinfo(*self);
-            fi.offset_line_column(self.hi as usize)
-        })
+        self.source.offset_line_column(self.hi as usize)
     }
 
     #[cfg(span_locations)]
-    pub(crate) fn file(&self) -> String {
+    pub(crate) fn file(&self) -> &Arc<str> {
         #[cfg(fuzzing)]
         return "<unspecified>".to_owned();
 
         #[cfg(not(fuzzing))]
-        SOURCE_MAP.with(|sm| {
-            let sm = sm.borrow();
-            sm.filepath(*self)
-        })
+        self.source.name()
     }
 
     #[cfg(span_locations)]
@@ -626,62 +402,60 @@ impl Span {
         };
 
         #[cfg(not(fuzzing))]
-        SOURCE_MAP.with(|sm| {
-            let sm = sm.borrow();
-            // If `other` is not within the same FileInfo as us, return None.
-            if !sm.fileinfo(*self).span_within(other) {
+        {
+            if self.source != other.source {
                 return None;
             }
             Some(Span {
                 lo: cmp::min(self.lo, other.lo),
                 hi: cmp::max(self.hi, other.hi),
+                source: self.source.clone(),
             })
-        })
+        }
     }
 
     #[cfg(not(span_locations))]
-    pub(crate) fn source_text(&self) -> Option<String> {
-        None
+    pub(crate) fn source_text(&self) -> &str {
+        ""
     }
 
     #[cfg(span_locations)]
-    pub(crate) fn source_text(&self) -> Option<String> {
+    pub(crate) fn source_text(&self) -> &str {
         #[cfg(fuzzing)]
         return None;
 
         #[cfg(not(fuzzing))]
         {
-            if self.is_call_site() {
-                None
-            } else {
-                Some(SOURCE_MAP.with(|sm| sm.borrow_mut().fileinfo_mut(*self).source_text(*self)))
-            }
+            let byte_range = self.byte_range();
+            &self.source.source_text()[byte_range]
         }
     }
 
     #[cfg(not(span_locations))]
-    pub(crate) fn first_byte(self) -> Self {
-        self
+    pub(crate) fn first_byte(&self) -> Self {
+        self.clone()
     }
 
     #[cfg(span_locations)]
-    pub(crate) fn first_byte(self) -> Self {
+    pub(crate) fn first_byte(&self) -> Self {
         Span {
             lo: self.lo,
             hi: cmp::min(self.lo.saturating_add(1), self.hi),
+            source: self.source.clone(),
         }
     }
 
     #[cfg(not(span_locations))]
-    pub(crate) fn last_byte(self) -> Self {
-        self
+    pub(crate) fn last_byte(&self) -> Self {
+        self.clone()
     }
 
     #[cfg(span_locations)]
-    pub(crate) fn last_byte(self) -> Self {
+    pub(crate) fn last_byte(&self) -> Self {
         Span {
             lo: cmp::max(self.hi.saturating_sub(1), self.lo),
             hi: self.hi,
+            source: self.source.clone(),
         }
     }
 
@@ -701,7 +475,7 @@ impl Debug for Span {
     }
 }
 
-pub(crate) fn debug_span_field_if_nontrivial(debug: &mut fmt::DebugStruct, span: Span) {
+pub(crate) fn debug_span_field_if_nontrivial(debug: &mut fmt::DebugStruct, span: &Span) {
     #[cfg(span_locations)]
     {
         if span.is_call_site() {
@@ -739,8 +513,8 @@ impl Group {
         self.stream.clone()
     }
 
-    pub(crate) fn span(&self) -> Span {
-        self.span
+    pub(crate) fn span(&self) -> &Span {
+        &self.span
     }
 
     pub(crate) fn span_open(&self) -> Span {
@@ -788,7 +562,7 @@ impl Debug for Group {
         let mut debug = fmt.debug_struct("Group");
         debug.field("delimiter", &self.delimiter);
         debug.field("stream", &self.stream);
-        debug_span_field_if_nontrivial(&mut debug, self.span);
+        debug_span_field_if_nontrivial(&mut debug, &self.span);
         debug.finish()
     }
 }
@@ -830,8 +604,8 @@ impl Ident {
         }
     }
 
-    pub(crate) fn span(&self) -> Span {
-        self.span
+    pub(crate) fn span(&self) -> &Span {
+        &self.span
     }
 
     pub(crate) fn set_span(&mut self, span: Span) {
@@ -946,7 +720,7 @@ impl Debug for Ident {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut debug = f.debug_struct("Ident");
         debug.field("sym", &format_args!("{}", self));
-        debug_span_field_if_nontrivial(&mut debug, self.span);
+        debug_span_field_if_nontrivial(&mut debug, &self.span);
         debug.finish()
     }
 }
@@ -983,9 +757,15 @@ impl Literal {
     }
 
     pub(crate) fn from_str_checked(repr: &str) -> Result<Self, LexError> {
-        let mut cursor = get_cursor(repr);
+        #[cfg(span_locations)]
+        let source = Source::new("", repr);
+        #[cfg(span_locations)]
+        let mut cursor = get_cursor(&source);
         #[cfg(span_locations)]
         let lo = cursor.off;
+
+        #[cfg(not(span_locations))]
+        let mut cursor = get_cursor(repr);
 
         let negative = cursor.starts_with_char('-');
         if negative {
@@ -1005,6 +785,8 @@ impl Literal {
                     lo,
                     #[cfg(span_locations)]
                     hi: rest.off,
+                    #[cfg(span_locations)]
+                    source,
                 };
                 return Ok(literal);
             }
@@ -1159,8 +941,8 @@ impl Literal {
         Literal::_new(repr)
     }
 
-    pub(crate) fn span(&self) -> Span {
-        self.span
+    pub(crate) fn span(&self) -> &Span {
+        &self.span
     }
 
     pub(crate) fn set_span(&mut self, span: Span) {
@@ -1201,7 +983,11 @@ impl Literal {
                 Bound::Unbounded => self.span.hi,
             };
             if lo <= hi && hi <= self.span.hi {
-                Some(Span { lo, hi })
+                Some(Span {
+                    lo,
+                    hi,
+                    source: self.span.source.clone(),
+                })
             } else {
                 None
             }
@@ -1219,7 +1005,7 @@ impl Debug for Literal {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         let mut debug = fmt.debug_struct("Literal");
         debug.field("lit", &format_args!("{}", self.repr));
-        debug_span_field_if_nontrivial(&mut debug, self.span);
+        debug_span_field_if_nontrivial(&mut debug, &self.span);
         debug.finish()
     }
 }
