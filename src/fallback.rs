@@ -35,6 +35,7 @@ pub fn force() {}
 pub fn unforce() {}
 
 #[derive(Clone)]
+#[allow(clippy::unsafe_derive_deserialize)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct TokenStream {
     inner: RcVec<TokenTree>,
@@ -721,6 +722,7 @@ impl Debug for Ident {
 
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[allow(clippy::unsafe_derive_deserialize)]
 pub(crate) struct Literal {
     pub(crate) repr: String,
     span: crate::Span,

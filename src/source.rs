@@ -48,7 +48,7 @@ impl Source {
             source_text: source_text.into(),
             lines,
             chars,
-            char_index_to_byte_offset: Default::default(),
+            char_index_to_byte_offset: Mutex::default(),
         }))
     }
 

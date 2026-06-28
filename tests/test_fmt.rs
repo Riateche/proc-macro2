@@ -1,12 +1,10 @@
-#![allow(clippy::from_iter_instead_of_collect)]
-
 use proc_macro2_send::{Delimiter, Group, Ident, Span, TokenStream, TokenTree};
 use std::iter;
 
 #[test]
 fn test_fmt_group() {
     let ident = Ident::new("x", Span::call_site());
-    let inner = TokenStream::from_iter(iter::once(TokenTree::Ident(ident)));
+    let inner: TokenStream = iter::once(TokenTree::Ident(ident)).collect();
     let parens_empty = Group::new(Delimiter::Parenthesis, TokenStream::new());
     let parens_nonempty = Group::new(Delimiter::Parenthesis, inner.clone());
     let brackets_empty = Group::new(Delimiter::Bracket, TokenStream::new());

@@ -118,15 +118,6 @@
 )]
 #![allow(unknown_lints, mismatched_lifetime_syntaxes)]
 
-#[cfg(all(
-    procmacro2_nightly_testing,
-    feature = "proc-macro",
-    not(proc_macro_span)
-))]
-compile_error! {"\
-    Build script probe failed to compile.
-"}
-
 extern crate alloc;
 extern crate std;
 
@@ -1086,6 +1077,7 @@ impl Debug for Ident {
 /// `Ident`s.
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[allow(clippy::unsafe_derive_deserialize)]
 pub struct Literal {
     inner: imp::Literal,
     _marker: ProcMacroAutoTraits,
