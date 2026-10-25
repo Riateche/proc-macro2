@@ -1,4 +1,5 @@
 use alloc::vec::{self, Vec};
+use core::hash::{Hash, Hasher};
 use core::mem;
 use core::panic::RefUnwindSafe;
 use core::slice;
@@ -118,6 +119,26 @@ impl<'a, T> RcVecMut<'a, T> {
     pub(crate) fn take(self) -> RcVecBuilder<T> {
         let vec = mem::take(self.inner);
         RcVecBuilder { inner: vec }
+    }
+}
+
+impl<T> PartialEq for RcVec<T>
+where
+    T: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.inner, &other.inner) || self.inner == other.inner
+    }
+}
+
+impl<T> Eq for RcVec<T> where T: Eq {}
+
+impl<T> Hash for RcVec<T>
+where
+    T: Hash,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner.hash(state);
     }
 }
 

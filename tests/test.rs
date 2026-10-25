@@ -1094,3 +1094,188 @@ fn postcard_ident() {
     serde_rc::clear_storage();
     assert_eq!(data, data2);
 }
+
+#[cfg(span_locations)]
+fn hash_of<T: std::hash::Hash>(value: &T) -> u64 {
+    use std::hash::{DefaultHasher, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
+
+#[test]
+#[allow(clippy::mutable_key_type)]
+fn span_hash_as_map_key() {
+    use std::collections::{HashMap, HashSet};
+
+    let span = Span::call_site();
+    let mut set = HashSet::new();
+    assert!(set.insert(span.clone()));
+    // Every call site shares one source, so this is the same span.
+    assert!(!set.insert(Span::call_site()));
+
+    let mut map = HashMap::new();
+    map.insert(span.clone(), "value");
+    assert_eq!(map.get(&span), Some(&"value"));
+}
+
+#[cfg(span_locations)]
+#[test]
+fn span_hash_matches_eq() {
+    let tokens = TokenStream::parse_with_name("lib.rs", "aaa bbb")
+        .unwrap()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let first = tokens[0].span();
+    let second = tokens[1].span();
+
+    // Equal spans hash equal, and hashing is repeatable.
+    assert_eq!(first, &first.clone());
+    assert_eq!(hash_of(first), hash_of(&first.clone()));
+    assert_eq!(hash_of(first), hash_of(first));
+
+    // Different positions within one source hash differently.
+    assert_ne!(first, second);
+    assert_ne!(hash_of(first), hash_of(second));
+}
+
+#[cfg(span_locations)]
+#[test]
+fn span_hash_includes_source_name() {
+    let a = TokenStream::parse_with_name("a.rs", "x").unwrap();
+    let b = TokenStream::parse_with_name("b.rs", "x").unwrap();
+    let a = a.into_iter().next().unwrap();
+    let b = b.into_iter().next().unwrap();
+
+    // Identical positions, but a different file name.
+    assert_eq!(a.span().byte_range(), b.span().byte_range());
+    assert_ne!(a.span(), b.span());
+    assert_ne!(hash_of(a.span()), hash_of(b.span()));
+}
+
+#[cfg(span_locations)]
+#[test]
+#[allow(clippy::mutable_key_type)]
+fn span_eq_and_hash_are_content_based() {
+    use std::collections::HashMap;
+
+    // Two independent parses allocate two distinct sources, but equality and
+    // hashing go by the source's name and text, so the spans still match.
+    let a = TokenStream::parse_with_name("f.rs", "x").unwrap();
+    let b = TokenStream::parse_with_name("f.rs", "x").unwrap();
+    let a = a.into_iter().next().unwrap();
+    let b = b.into_iter().next().unwrap();
+
+    assert_eq!(a.span(), b.span());
+    assert_eq!(hash_of(a.span()), hash_of(b.span()));
+
+    let mut map = HashMap::new();
+    map.insert(a.span().clone(), "value");
+    assert_eq!(map.get(b.span()), Some(&"value"));
+}
+
+#[cfg(span_locations)]
+#[test]
+fn source_hash_is_cached() {
+    // A span's hash does not depend on how much of the source it covers, so a
+    // large file costs no more to hash than a small one once cached.
+    let big = "x ".repeat(100_000);
+    let tokens = TokenStream::parse_with_name("big.rs", &big).unwrap();
+    let span = tokens.into_iter().next().unwrap().span().clone();
+    assert_eq!(hash_of(&span), hash_of(&span));
+}
+
+#[cfg(span_locations)]
+#[test]
+#[allow(clippy::mutable_key_type)]
+#[cfg(feature = "serde")]
+fn postcard_span_hash() {
+    use std::collections::HashMap;
+
+    let token = TokenStream::parse_with_name("lib.rs", "aaa bbb")
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap();
+    let span = token.span().clone();
+
+    let dump = postcard::to_allocvec(&span).unwrap();
+    serde_rc::clear_storage();
+    let span2 = postcard::from_bytes::<Span>(&dump).unwrap();
+    serde_rc::clear_storage();
+
+    // The cached hash is not serialized; it is recomputed from the
+    // round-tripped name and text and must come out identical.
+    assert_eq!(span, span2);
+    assert_eq!(hash_of(&span), hash_of(&span2));
+    assert_eq!(span.source_text(), span2.source_text());
+
+    let mut map = HashMap::new();
+    map.insert(span, "value");
+    assert_eq!(map.get(&span2), Some(&"value"));
+}
+
+#[cfg(span_locations)]
+#[test]
+#[allow(clippy::mutable_key_type)]
+fn token_eq_and_hash_ignore_spans() {
+    use std::collections::HashSet;
+
+    let tree = |name, src| {
+        TokenStream::parse_with_name(name, src)
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap()
+    };
+
+    // The same tokens at different offsets in differently named sources.
+    let group = tree("a.rs", "(aaa + 1.0)");
+    let shifted = tree("b.rs", "    (aaa + 1.0)");
+    assert_ne!(group.span(), shifted.span());
+
+    // Groups, idents, puncts and literals all compare by content only.
+    assert_eq!(group, shifted);
+    assert_eq!(hash_of(&group), hash_of(&shifted));
+
+    let mut set = HashSet::new();
+    assert!(set.insert(group.clone()));
+    assert!(!set.insert(shifted));
+
+    // A different literal, delimiter, ident or punct each compares unequal.
+    for other in [
+        tree("a.rs", "(aaa + 1.1)"),
+        tree("a.rs", "[aaa + 1.0]"),
+        tree("a.rs", "(bbb + 1.0)"),
+        tree("a.rs", "(aaa - 1.0)"),
+    ] {
+        assert_ne!(group, other);
+        assert!(!set.contains(&other));
+    }
+}
+
+#[cfg(span_locations)]
+#[test]
+fn delim_span_eq_compares_spans() {
+    let group = |src| match TokenStream::parse_with_name("a.rs", src)
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap()
+    {
+        TokenTree::Group(group) => group,
+        _ => unreachable!(),
+    };
+
+    let plain = group("(x)");
+    let same = group("(x)");
+    let shifted = group("    (x)");
+
+    // A `DelimSpan` holds nothing but spans, so unlike the token types it does
+    // compare them.
+    assert_eq!(plain.delim_span(), same.delim_span());
+    assert_eq!(hash_of(&plain.delim_span()), hash_of(&same.delim_span()));
+    assert_ne!(plain.delim_span(), shifted.delim_span());
+    assert_ne!(hash_of(&plain.delim_span()), hash_of(&shifted.delim_span()));
+}

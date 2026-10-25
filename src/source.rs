@@ -4,8 +4,8 @@ use {
     core::ops::Range,
     std::{
         collections::BTreeMap,
-        hash::Hash,
-        sync::{Arc, LazyLock, Mutex},
+        hash::{DefaultHasher, Hash, Hasher},
+        sync::{Arc, LazyLock, Mutex, OnceLock},
         vec::Vec,
     },
 };
@@ -19,6 +19,12 @@ struct SourceInner {
     lines: Vec<usize>,
     chars: usize,
     char_index_to_byte_offset: Mutex<BTreeMap<usize, usize>>,
+    /// Hash of `name` and `source_text`, computed on first use and cached so that
+    /// hashing a `Span` is O(1). Deliberately not serialized: `OnceLock::default()`
+    /// is empty, so the hash is recomputed on demand after deserialization and
+    /// stays consistent with a freshly parsed source.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    content_hash: OnceLock<u64>,
 }
 
 #[derive(Clone)]
@@ -28,14 +34,20 @@ pub struct Source(#[cfg_attr(feature = "serde", serde(with = "serde_rc"))] Arc<S
 pub(crate) static EMPTY_SOURCE: LazyLock<Source> = LazyLock::new(|| Source::new("", ""));
 
 impl Hash for Source {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        Arc::as_ptr(&self.0).hash(state);
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.content_hash().hash(state);
     }
 }
 
+// Content-based, with a pointer fast path. Comparing the cached hashes rejects
+// unequal sources in O(1); the text comparison that follows is required because a
+// hash match is not proof of equality.
 impl PartialEq for Source {
     fn eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
+            || (self.content_hash() == other.content_hash()
+                && self.0.name == other.0.name
+                && self.0.source_text == other.0.source_text)
     }
 }
 impl Eq for Source {}
@@ -49,6 +61,7 @@ impl Source {
             lines,
             chars,
             char_index_to_byte_offset: Mutex::default(),
+            content_hash: OnceLock::new(),
         }))
     }
 
@@ -58,6 +71,17 @@ impl Source {
 
     pub fn source_text(&self) -> &Arc<str> {
         &self.0.source_text
+    }
+
+    /// Hash of this source's name and text. Computed at most once per `Source`
+    /// and cached, so repeated hashing of spans is cheap.
+    pub(crate) fn content_hash(&self) -> u64 {
+        *self.0.content_hash.get_or_init(|| {
+            let mut hasher = DefaultHasher::new();
+            self.0.name.hash(&mut hasher);
+            self.0.source_text.hash(&mut hasher);
+            hasher.finish()
+        })
     }
 
     pub(crate) fn offset_line_column(&self, offset: usize) -> LineColumn {

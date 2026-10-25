@@ -540,6 +540,14 @@ impl Span {
     }
 }
 
+// Hashing a span is O(1) after the first span from a given source: the hash of
+// the source name and text is computed once and cached in the shared `Source`.
+impl Hash for Span {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        self.inner.hash(hasher);
+    }
+}
+
 /// Prints a span in a form convenient for debugging.
 impl Debug for Span {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -548,7 +556,9 @@ impl Debug for Span {
 }
 
 /// A single token or a delimited sequence of token trees (e.g. `[1, (), ..]`).
-#[derive(Clone)]
+///
+/// Equality and hashing ignore spans, as they do for [`Ident`].
+#[derive(Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TokenTree {
     /// A token stream surrounded by bracket delimiters.
@@ -650,14 +660,16 @@ impl Debug for TokenTree {
 ///
 /// A `Group` internally contains a `TokenStream` which is surrounded by
 /// `Delimiter`s.
-#[derive(Clone)]
+///
+/// Equality and hashing ignore spans, as they do for [`Ident`].
+#[derive(Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Group {
     inner: imp::Group,
 }
 
 /// Describes how a sequence of token trees is delimited.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Delimiter {
     /// `( ... )`
@@ -790,6 +802,8 @@ impl Debug for Group {
 ///
 /// Multicharacter operators like `+=` are represented as two instances of
 /// `Punct` with different forms of `Spacing` returned.
+///
+/// Equality and hashing ignore spans, as they do for [`Ident`].
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Punct {
@@ -798,9 +812,25 @@ pub struct Punct {
     span: Span,
 }
 
+// Spans take no part in equality or hashing, consistent with `Ident`.
+impl PartialEq for Punct {
+    fn eq(&self, other: &Self) -> bool {
+        self.ch == other.ch && self.spacing == other.spacing
+    }
+}
+
+impl Eq for Punct {}
+
+impl Hash for Punct {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        self.ch.hash(hasher);
+        self.spacing.hash(hasher);
+    }
+}
+
 /// Whether a `Punct` is followed immediately by another `Punct` or followed by
 /// another token or whitespace.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Spacing {
     /// E.g. `+` is `Alone` in `+ =`, `+ident` or `+()`.
@@ -1076,12 +1106,30 @@ impl Debug for Ident {
 ///
 /// Boolean literals like `true` and `false` do not belong here, they are
 /// `Ident`s.
+///
+/// Equality and hashing ignore spans, as they do for [`Ident`].
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(clippy::unsafe_derive_deserialize)]
 pub struct Literal {
     inner: imp::Literal,
     _marker: ProcMacroAutoTraits,
+}
+
+// Spans take no part in equality or hashing, consistent with `Ident`: literals
+// are equal when they have the same representation in source.
+impl PartialEq for Literal {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+
+impl Eq for Literal {}
+
+impl Hash for Literal {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        self.inner.hash(hasher);
+    }
 }
 
 macro_rules! suffixed_int_literals {

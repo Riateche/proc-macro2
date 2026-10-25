@@ -14,6 +14,7 @@ use core::cmp;
 use core::cmp::Ordering;
 use core::ffi::CStr;
 use core::fmt::{self, Debug, Display, Write};
+use core::hash::{Hash, Hasher};
 use core::mem::ManuallyDrop;
 #[cfg(span_locations)]
 use core::ops::Range;
@@ -301,7 +302,7 @@ impl IntoIterator for TokenStream {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct Span {
     #[cfg(span_locations)]
@@ -488,6 +489,24 @@ pub(crate) struct Group {
     delimiter: Delimiter,
     stream: TokenStream,
     span: crate::Span,
+}
+
+// Spans take no part in equality or hashing, consistent with `Ident`: two groups
+// are equal when the same delimiter surrounds the same token trees, wherever in
+// the source they came from. Note this recurses through nested groups.
+impl PartialEq for Group {
+    fn eq(&self, other: &Self) -> bool {
+        self.delimiter == other.delimiter && self.stream.inner == other.stream.inner
+    }
+}
+
+impl Eq for Group {}
+
+impl Hash for Group {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.delimiter.hash(state);
+        self.stream.inner.hash(state);
+    }
 }
 
 impl Group {
@@ -726,6 +745,22 @@ impl Debug for Ident {
 pub(crate) struct Literal {
     pub(crate) repr: String,
     span: crate::Span,
+}
+
+// Spans take no part in equality or hashing, consistent with `Ident`: literals
+// are equal when they have the same representation in source.
+impl PartialEq for Literal {
+    fn eq(&self, other: &Self) -> bool {
+        self.repr == other.repr
+    }
+}
+
+impl Eq for Literal {}
+
+impl Hash for Literal {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.repr.hash(state);
+    }
 }
 
 macro_rules! suffixed_numbers {

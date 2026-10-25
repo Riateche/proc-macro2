@@ -5,11 +5,15 @@ use crate::imp;
 use crate::marker::{ProcMacroAutoTraits, MARKER};
 use crate::Span;
 use core::fmt::{self, Debug};
+use core::hash::{Hash, Hasher};
 
 /// An object that holds a [`Group`]'s `span_open()` and `span_close()` together
 /// in a more compact representation than holding those 2 spans individually.
 ///
 /// [`Group`]: crate::Group
+///
+/// Unlike the token types, whose equality and hashing ignore spans, a
+/// `DelimSpan` holds nothing but spans and so compares them.
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DelimSpan {
@@ -17,7 +21,23 @@ pub struct DelimSpan {
     _marker: ProcMacroAutoTraits,
 }
 
-#[derive(Clone)]
+// Unlike the other token types, a `DelimSpan` holds nothing but spans, so these
+// necessarily compare and hash them.
+impl PartialEq for DelimSpan {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+
+impl Eq for DelimSpan {}
+
+impl Hash for DelimSpan {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        self.inner.hash(hasher);
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 enum DelimSpanEnum {
     Fallback(Span),
